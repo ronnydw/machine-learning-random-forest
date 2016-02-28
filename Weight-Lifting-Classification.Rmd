@@ -1,0 +1,91 @@
+---
+title: "Weight Lifting Classification Using Random Forest"
+author: "Ronny De Winter"
+date: "26 February 2016"
+output: html_document
+---
+
+# Introduction
+
+In this exercise we build a prediction model for classifying physical activities based on measurement data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants.
+
+Dataset and more information is avalable on http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+# Load and clean the data
+
+```{r, cache=TRUE}
+training <- read.csv("pml-training.csv")
+testing <- read.csv("pml-testing.csv")
+```
+
+The training dataset has 19622 observations with 160 variables.
+'classe' is the dependent variable we want to predict.
+
+Remove the first 6 columns, irrelevant for prediction (IDs, timestamps)
+```{r, cache=TRUE}
+training <- training[,-c(1:6)]
+testing <- testing[,-c(1:6)]
+```
+
+Remove columns with NA
+```{r, cache=TRUE}
+training <- training[ , colSums(is.na(training)) == 0]
+testing <- testing[ , colSums(is.na(testing)) == 0]
+```
+
+Remove non-numeric variables, but keep the dependent variable 'classe'
+```{r}
+classe <- training$classe
+training <- training[, sapply(training, is.numeric)]
+testing <- testing[, sapply(testing, is.numeric)]
+training$classe <- classe
+```
+
+We are left with 53 variables.
+
+# Building the model
+
+Random forest is known to be a good classification method for this type of problems.
+
+In random forests, there is no need for cross-validation or a separate test set to get an unbiased estimate of the test set error. It is estimated internally, during the run. As a matter of exercise we will divide the training dataset into 2: training_new (70%) and testing_new (30%), and we will do a 10-fold cross-validation. We set ntree to 100 instead of 500 to reduce execution time.
+
+This will allow us to validate our model and get an idea of the out of sample error.
+
+```{r, message=FALSE, warning=FALSE}
+library(caret)
+library(randomForest)
+library(doMC)
+registerDoMC(cores = 5)
+```
+```{r, cache=TRUE}
+inTrain = createDataPartition(training$classe, p=0.7, list=FALSE)
+training_new = training[inTrain, ]
+testing_new = training[-inTrain, ]
+set.seed(42)
+fit_rf <- train(classe ~ ., method="rf", data=training_new,trControl=trainControl(method='cv', number=10), ntree=100, prox=TRUE, allowParallel=TRUE)
+fit_rf$finalModel
+```
+
+The out-of-bag estimate is told as being as accurate as using a test set. Using the out-of-bag error estimate removes the need for a set aside test set. Let't check this statement.
+
+Let's predict with the trained model on the testing_new dataset to get an idea of the out-of-sample error.
+```{r, cache=TRUE}
+pred_test_new_rf <- predict(fit_rf, testing_new)
+confusionMatrix(pred_test_new_rf, testing_new$classe)
+```
+
+This gives us an accuracy of 0.9992 or an out of sample error of 0.08%, in line with the OOB estimate of 0.31% we saw above.
+
+Let's now predict the 20 values for the testing set
+```{r}
+pred_testing_rf <- predict(fit_rf, testing) 
+```
+
+The autograder confirms the correctness of the model with a perfect score 20/20.
+
+# Conclusion
+
+Body movement data measured with accelerometers can be classified very accurately with the random forest classifier method.
+Cross validation is not needed with the random forest method, the out-of-bag error gives a reasonable accurate estimate of the out-of-sample error.
+
+
